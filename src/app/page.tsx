@@ -22,13 +22,11 @@ export default function Home() {
           >
             Open Admin Dashboard
           </Link>
-          <Link
-            href="/review/test-business"
-            className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
-          >
-            Open Review Flow (Test)
-          </Link>
         </div>
+        <p className="mt-4 max-w-xl text-sm text-slate-500">
+          Review links work at <code>/review/&lt;your-slug&gt;</code> after you add a
+          matching row in the <code>businesses</code> table.
+        </p>
       </div>
     </main>
   );
