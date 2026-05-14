@@ -10,6 +10,9 @@ interface Business {
   place_id: string;
   custom_url_slug: string;
   logo_url?: string;
+  /** When false, landing page is off (SaaS billing / suspension). */
+  is_active?: boolean | null;
+  plan?: string | null;
 }
 
 interface PageProps {
@@ -21,6 +24,7 @@ export default function ReviewPage({ params }: PageProps) {
   const [business, setBusiness] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [inactive, setInactive] = useState(false);
   const [hoveredStar, setHoveredStar] = useState(0);
   const [selectedStar, setSelectedStar] = useState(0);
   const [navigating, setNavigating] = useState(false);
@@ -40,6 +44,11 @@ async function fetchBusiness(slug: string) {
       .single();
 
     if (error || !data) { setNotFound(true); setLoading(false); return; }
+    if (data.is_active === false) {
+      setInactive(true);
+      setLoading(false);
+      return;
+    }
     setBusiness(data);
     setLoading(false);
     await supabase.from("scan_logs").insert({
@@ -61,7 +70,10 @@ async function fetchBusiness(slug: string) {
     const flowId = flow?.id ?? "";
     setTimeout(() => {
       if (star >= 4) {
-        router.push(`/review-builder?rating=${star}&businessId=${business.id}&flowId=${flowId}&placeId=${business.place_id}`);
+        const plan = encodeURIComponent((business.plan ?? "basic").toString().toLowerCase());
+        router.push(
+          `/review-builder?rating=${star}&businessId=${business.id}&flowId=${flowId}&placeId=${business.place_id}&plan=${plan}`,
+        );
       } else {
         router.push(`/feedback?rating=${star}&businessId=${business.id}&flowId=${flowId}`);
       }
@@ -82,6 +94,16 @@ async function fetchBusiness(slug: string) {
         <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
         <h1 style={{ ...styles.bizName, fontSize: 20 }}>Business not found</h1>
         <p style={styles.subtext}>This review link does not exist.</p>
+      </div>
+    </main>
+  );
+
+  if (inactive) return (
+    <main style={styles.root}>
+      <div style={{ ...styles.card, textAlign: "center", padding: "48px 32px" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>⏸️</div>
+        <h1 style={{ ...styles.bizName, fontSize: 20 }}>Review page unavailable</h1>
+        <p style={styles.subtext}>This business review link is temporarily disabled.</p>
       </div>
     </main>
   );

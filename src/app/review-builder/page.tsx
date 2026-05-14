@@ -28,6 +28,8 @@ function ReviewBuilderContent() {
   const businessId = searchParams.get("businessId") ?? "";
   const flowId = searchParams.get("flowId") ?? "";
   const placeId = searchParams.get("placeId") ?? "";
+  const plan = (searchParams.get("plan") ?? "basic").toLowerCase();
+  const maxTagSelections = plan === "pro" || plan === "enterprise" ? 3 : 2;
 
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [reviewText, setReviewText] = useState("");
@@ -45,9 +47,11 @@ function ReviewBuilderContent() {
   const lastTripleKeyRef = useRef<string | null>(null);
 
   function toggleTag(tag: string) {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
+    setSelectedTags((prev) => {
+      if (prev.includes(tag)) return prev.filter((t) => t !== tag);
+      if (prev.length >= maxTagSelections) return prev;
+      return [...prev, tag];
+    });
     if (activeStep === 1) setActiveStep(2);
   }
 
@@ -239,23 +243,30 @@ function ReviewBuilderContent() {
             </div>
             <div>
               <p style={rb.stepTitle}>What did you love?</p>
-              <p style={rb.stepDesc}>Pick two likes — two reviews appear automatically. Add a third like for another option.</p>
+              <p style={rb.stepDesc}>
+                {maxTagSelections >= 3
+                  ? "Pick two or three likes — reviews appear automatically. A third like unlocks a third option."
+                  : "Pick two likes for your plan (Basic). Upgrade to Pro for a third AI review option."}
+              </p>
             </div>
           </div>
           <div style={rb.tagsGrid}>
-            {TAGS.map((tag) => (
-              <button key={tag} onClick={() => toggleTag(tag)} style={{
+            {TAGS.map((tag) => {
+              const selected = selectedTags.includes(tag);
+              const atCap = !selected && selectedTags.length >= maxTagSelections;
+              return (
+              <button key={tag} type="button" disabled={atCap} onClick={() => toggleTag(tag)} style={{
                 padding: "8px 14px", borderRadius: 99, fontSize: 13, fontWeight: 500,
-                cursor: "pointer", transition: "all 0.2s cubic-bezier(0.16,1,0.3,1)",
-                border: selectedTags.includes(tag) ? "1.5px solid #6366f1" : "1px solid #e2e8f0",
-                background: selectedTags.includes(tag) ? "#eff6ff" : "white",
-                color: selectedTags.includes(tag) ? "#4f46e5" : "#475569",
-                boxShadow: selectedTags.includes(tag) ? "0 2px 8px rgba(99,102,241,0.15)" : "none",
-                transform: selectedTags.includes(tag) ? "scale(1.02)" : "scale(1)",
+                cursor: atCap ? "not-allowed" : "pointer", opacity: atCap ? 0.45 : 1, transition: "all 0.2s cubic-bezier(0.16,1,0.3,1)",
+                border: selected ? "1.5px solid #6366f1" : "1px solid #e2e8f0",
+                background: selected ? "#eff6ff" : "white",
+                color: selected ? "#4f46e5" : "#475569",
+                boxShadow: selected ? "0 2px 8px rgba(99,102,241,0.15)" : "none",
+                transform: selected ? "scale(1.02)" : "scale(1)",
               }}>
                 {tag}
               </button>
-            ))}
+            );})}
           </div>
         </div>
 

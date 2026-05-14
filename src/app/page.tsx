@@ -15,17 +15,36 @@ export default function Home() {
           Google, and capture private feedback for low ratings.
         </p>
 
-        <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+        <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
           <Link
-            href="/admin"
+            href="/super-admin"
             className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
           >
-            Open Admin Dashboard
+            Super Admin (clients &amp; QR)
+          </Link>
+          <Link
+            href="/login"
+            className="rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
+          >
+            Business owner login
+          </Link>
+          <Link
+            href="/dashboard"
+            className="rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
+          >
+            Client dashboard
+          </Link>
+          <Link
+            href="/admin"
+            className="rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
+          >
+            Legacy analytics (all data)
           </Link>
         </div>
         <p className="mt-4 max-w-xl text-sm text-slate-500">
-          Review links work at <code>/review/&lt;your-slug&gt;</code> after you add a
-          matching row in the <code>businesses</code> table.
+          Review links: <code>/review/&lt;slug&gt;</code>. Super Admin uses your server secret + service role. Owners
+          sign in at <code>/login</code> when <code>owner_email</code> matches Supabase Auth. Run{" "}
+          <code>supabase/migrations</code> for SaaS columns.
         </p>
       </div>
     </main>
