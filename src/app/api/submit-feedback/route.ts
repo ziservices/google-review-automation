@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = getSupabase();
     const { businessId, rating, feedbackText } = await req.json();
 
     if (!businessId || !rating) {

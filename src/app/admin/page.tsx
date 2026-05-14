@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line,
@@ -28,15 +28,16 @@ export default function AdminPage() {
 
   async function loadStats() {
     try {
+      const supabase = getSupabase();
       const [scansRes, reviewsRes, feedbackRes] = await Promise.all([
         supabase.from("scan_logs").select("created_at, device_type"),
         supabase.from("reviews_flow").select("rating, submitted_to_google, created_at"),
         supabase.from("feedback").select("id, rating, feedback_text, created_at").order("created_at", { ascending: false }).limit(5),
       ]);
 
-      const scans = scansRes.data ?? [];
-      const reviews = reviewsRes.data ?? [];
-      const feedbacks = feedbackRes.data ?? [];
+      const scans = (scansRes.data ?? []) as { created_at: string | null; device_type: string | null }[];
+      const reviews = (reviewsRes.data ?? []) as { rating: number; submitted_to_google: boolean; created_at: string | null }[];
+      const feedbacks = (feedbackRes.data ?? []) as Stats["recentFeedback"];
 
       const totalScans = scans.length;
       const totalRatings = reviews.length;

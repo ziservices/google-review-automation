@@ -2,7 +2,7 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { useState, Suspense, useEffect, useCallback, useRef } from "react";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
 const TAGS = [
   "Amazing food 🍽️", "Friendly staff 😊", "Great value 💰", "Lovely atmosphere ✨",
@@ -187,6 +187,7 @@ function ReviewBuilderContent() {
 
   async function copyAndRedirect() {
     if (!reviewText.trim() || submitting) return;
+    const supabase = getSupabase();
     setSubmitting(true);
     try { await navigator.clipboard.writeText(reviewText); } catch { /* continue */ }
     await supabase.from("reviews_flow").update({

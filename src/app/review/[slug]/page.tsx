@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
 interface Business {
   id: string;
@@ -31,7 +31,8 @@ export default function ReviewPage({ params }: PageProps) {
     params.then(({ slug }) => fetchBusiness(slug));
   }, [params]);
 
-  async function fetchBusiness(slug: string) {
+async function fetchBusiness(slug: string) {
+    const supabase = getSupabase();
     const { data, error } = await supabase
       .from("businesses")
       .select("*")
@@ -50,6 +51,7 @@ export default function ReviewPage({ params }: PageProps) {
 
   async function handleStarClick(star: number) {
     if (navigating || !business) return;
+    const supabase = getSupabase();
     setSelectedStar(star);
     setNavigating(true);
     const { data: flow } = await supabase
