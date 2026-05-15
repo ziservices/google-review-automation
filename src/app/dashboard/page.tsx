@@ -1,120 +1,158 @@
-"use client";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase-server";
+import QRCodeCard from "@/components/QRCodeCard";
 
-import { createBrowserClient } from "@supabase/ssr";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-import type { AnalyticsStats } from "@/lib/analytics";
-import { AnalyticsBoard } from "@/components/AnalyticsBoard";
+export default async function DashboardPage() {
+  const supabase = await createClient();
 
-type Business = { id: string; name: string; custom_url_slug: string; plan: string };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-export default function DashboardPage() {
-  const router = useRouter();
-  const [stats, setStats] = useState<AnalyticsStats | null>(null);
-  const [business, setBusiness] = useState<Business | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const supabase = () => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-    return createBrowserClient(url, anon);
-  };
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const { data: { session } } = await supabase().auth.getSession();
-    if (!session) {
-      router.replace("/login");
-      setLoading(false);
-      return;
-    }
-    const res = await fetch("/api/dashboard/stats", { credentials: "include" });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setError(typeof json.error === "string" ? json.error : "Could not load dashboard");
-      setStats(null);
-      setBusiness(null);
-      setLoading(false);
-      return;
-    }
-    setBusiness(json.business as Business);
-    setStats(json.stats as AnalyticsStats);
-    setLoading(false);
-  }, [router]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function signOut() {
-    await supabase().auth.signOut();
-    router.push("/login");
-    router.refresh();
+  if (!user) {
+    redirect("/login");
   }
 
-  if (loading) {
+  const {
+    data: business,
+    error,
+  } = await supabase
+    .from("businesses")
+    .select("*")
+    .eq("owner_email", user.email?.toLowerCase())
+    .maybeSingle();
+
+  if (!business || error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-800" />
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <div className="text-center">
+
+          <h1 className="text-3xl font-bold text-white mb-4">
+            No business attached to this account
+          </h1>
+
+          <p className="text-red-400 text-sm mb-2">
+            Logged in as: {user.email}
+          </p>
+
+          <pre className="text-red-500 text-xs max-w-xl overflow-auto">
+            {JSON.stringify(error, null, 2)}
+          </pre>
+
+        </div>
       </div>
     );
   }
 
-  if (error || !stats || !business) {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
-        <div className="max-w-md rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
-          <p className="font-semibold">Dashboard unavailable</p>
-          <p className="mt-2">{error ?? "Unknown error"}</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-semibold text-white"
-              onClick={() => void load()}
-            >
-              Retry
-            </button>
-            <Link href="/login" className="rounded-lg border border-amber-900/30 px-3 py-1.5 text-xs font-semibold">
-              Login
-            </Link>
-          </div>
-        </div>
-      </main>
-    );
-  }
+  /* ANALYTICS */
+
+  const { data: feedbacks } = await supabase
+    .from("feedback")
+    .select("*")
+    .eq("business_id", business.id);
+
+  const totalFeedback = feedbacks?.length || 0;
+
+  const positiveFeedback =
+    feedbacks?.filter((f) => f.rating >= 4).length || 0;
+
+  const negativeFeedback =
+    feedbacks?.filter((f) => f.rating <= 3).length || 0;
 
   return (
-    <AnalyticsBoard
-      title="Your analytics"
-      subtitle={`${business.name} · plan: ${business.plan}`}
-      stats={stats}
-      nav={
-        <>
-          <Link
-            href={`/review/${business.custom_url_slug}`}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 shadow-sm hover:bg-gray-50"
-          >
-            Open review page
-          </Link>
-          <Link
-            href="/super-admin"
-            className="rounded-xl px-3 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900"
-          >
-            Super Admin
-          </Link>
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 shadow-sm hover:bg-gray-50"
-          >
-            Sign out
-          </button>
-        </>
-      }
-    />
+    <main className="min-h-screen bg-gray-100 p-8">
+
+      <div className="max-w-6xl mx-auto">
+
+        {/* HEADER */}
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-6">
+
+          <h1 className="text-4xl font-bold mb-2">
+            {business.name}
+          </h1>
+
+          <p className="text-gray-500">
+            Welcome back, {user.email}
+          </p>
+
+        </div>
+
+        {/* STATS */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold mb-2">
+              Plan
+            </h2>
+
+            <p className="text-3xl font-bold capitalize">
+              {business.plan}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold mb-2">
+              Status
+            </h2>
+
+            <p className="text-3xl font-bold">
+              {business.is_active ? "Active" : "Inactive"}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold mb-2">
+              Total Reviews
+            </h2>
+
+            <p className="text-3xl font-bold">
+              {totalFeedback}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold mb-2 text-green-600">
+              Positive
+            </h2>
+
+            <p className="text-3xl font-bold text-green-600">
+              {positiveFeedback}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold mb-2 text-red-600">
+              Negative
+            </h2>
+
+            <p className="text-3xl font-bold text-red-600">
+              {negativeFeedback}
+            </p>
+          </div>
+
+        </div>
+
+        {/* REVIEW URL */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+
+          <h2 className="text-lg font-semibold mb-3">
+            Review URL
+          </h2>
+
+          <p className="text-sm break-all text-blue-600">
+            {process.env.NEXT_PUBLIC_APP_URL}/review/{business.custom_url_slug}
+          </p>
+
+        </div>
+
+        {/* QR CODE SECTION */}
+        <QRCodeCard
+          businessName={business.name}
+          slug={business.custom_url_slug}
+        />
+
+      </div>
+
+    </main>
   );
 }

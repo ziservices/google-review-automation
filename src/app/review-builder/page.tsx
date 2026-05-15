@@ -202,7 +202,9 @@ function ReviewBuilderContent() {
       body: JSON.stringify({ businessId, flowId }),
     });
     setTimeout(() => {
-      window.open(`https://search.google.com/local/writereview?placeid=${placeId}`, "_blank");
+      window.open(
+  `https://search.google.com/local/writereview?placeid=${placeId}`
+)
       router.push("/thank-you?type=review");
     }, 600);
   }
