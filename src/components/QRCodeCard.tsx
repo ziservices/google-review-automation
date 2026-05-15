@@ -33,31 +33,33 @@ export default function QRCodeCard({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-
-      <h2 className="text-2xl font-bold mb-2">
-        {businessName}
+    <div className="bg-white border border-gray-200 rounded-lg p-8 text-center shadow-sm">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        QR Code
       </h2>
 
-      <p className="text-gray-500 mb-6">
-        Scan to leave a review
+      <p className="text-gray-600 text-sm mb-8">
+        Print or share this QR code with customers
       </p>
 
       {qrUrl && (
-        <img
-          src={qrUrl}
-          alt="QR Code"
-          className="w-64 h-64 mx-auto mb-6"
-        />
+        <div className="flex justify-center mb-8">
+          <div className="bg-white border border-gray-200 p-4 rounded-lg">
+            <img
+              src={qrUrl}
+              alt="QR Code"
+              className="w-48 h-48"
+            />
+          </div>
+        </div>
       )}
 
       <button
         onClick={downloadQR}
-        className="bg-black text-white px-6 py-3 rounded-xl"
+        className="px-6 py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-lg transition-all"
       >
-        Download QR
+        Download QR Code
       </button>
-
     </div>
   );
 }
