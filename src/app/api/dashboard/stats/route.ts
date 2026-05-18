@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { aggregateAnalytics } from "@/lib/analytics";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { createClient } from "@/lib/supabase-server";
 
 export async function GET() {
   try {

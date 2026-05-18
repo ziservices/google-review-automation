@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aggregateAnalytics } from "@/lib/analytics";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { createClient } from "@/lib/supabase-server";
 import { validateSuperAdminRequest } from "@/lib/super-admin-auth";
 
 type Ctx = { params: Promise<{ businessId: string }> };

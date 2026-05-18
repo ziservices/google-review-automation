@@ -10,7 +10,6 @@ interface Business {
   place_id: string;
   custom_url_slug: string;
   logo_url?: string;
-  /** When false, landing page is off (SaaS billing / suspension). */
   is_active?: boolean | null;
   plan?: string | null;
 }
@@ -30,12 +29,13 @@ export default function ReviewPage({ params }: PageProps) {
   const [navigating, setNavigating] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+
   useEffect(() => {
     setMounted(true);
     params.then(({ slug }) => fetchBusiness(slug));
   }, [params]);
 
-async function fetchBusiness(slug: string) {
+  async function fetchBusiness(slug: string) {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("businesses")
@@ -51,6 +51,7 @@ async function fetchBusiness(slug: string) {
     }
     setBusiness(data);
     setLoading(false);
+
     await supabase.from("scan_logs").insert({
       business_id: data.id,
       user_agent: navigator.userAgent,
@@ -63,11 +64,18 @@ async function fetchBusiness(slug: string) {
     const supabase = getSupabase();
     setSelectedStar(star);
     setNavigating(true);
+
     const { data: flow } = await supabase
       .from("reviews_flow")
-      .insert({ business_id: business.id, rating: star, submitted_to_google: false })
+      .insert({
+        business_id: business.id,
+        rating: star,
+        submitted_to_google: false,
+      })
       .select().single();
+
     const flowId = flow?.id ?? "";
+
     setTimeout(() => {
       if (star >= 4) {
         const plan = encodeURIComponent((business.plan ?? "basic").toString().toLowerCase());
@@ -80,6 +88,7 @@ async function fetchBusiness(slug: string) {
     }, 600);
   }
 
+  // ── Loading / error states ──────────────────────────────────────────────
   if (loading) return (
     <main style={styles.root}>
       <div style={styles.loadingWrap}>
@@ -118,7 +127,12 @@ async function fetchBusiness(slug: string) {
       <div style={styles.blob1} />
       <div style={styles.blob2} />
 
-      <div style={{ ...styles.card, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all 0.5s cubic-bezier(0.16,1,0.3,1)" }}>
+      <div style={{
+        ...styles.card,
+        opacity: mounted ? 1 : 0,
+        transform: mounted ? "translateY(0)" : "translateY(24px)",
+        transition: "all 0.5s cubic-bezier(0.16,1,0.3,1)",
+      }}>
 
         {/* Logo */}
         <div style={styles.logoWrap}>
@@ -152,7 +166,8 @@ async function fetchBusiness(slug: string) {
               onClick={() => handleStarClick(star)}
               disabled={navigating}
               style={{
-                background: "none", border: "none", cursor: navigating ? "not-allowed" : "pointer",
+                background: "none", border: "none",
+                cursor: navigating ? "not-allowed" : "pointer",
                 padding: "4px", borderRadius: 8,
                 transform: hoveredStar >= star || selectedStar >= star ? "scale(1.15)" : "scale(1)",
                 transition: "transform 0.15s cubic-bezier(0.34,1.56,0.64,1)",
@@ -162,7 +177,10 @@ async function fetchBusiness(slug: string) {
                 fill={star <= activeStars ? (activeStars >= 4 ? "#facc15" : activeStars === 3 ? "#fb923c" : "#f87171") : "none"}
                 stroke={star <= activeStars ? (activeStars >= 4 ? "#f59e0b" : activeStars === 3 ? "#ea580c" : "#ef4444") : "#e2e8f0"}
                 strokeWidth="1.5"
-                style={{ filter: star <= activeStars ? "drop-shadow(0 2px 8px rgba(250,204,21,0.4))" : "none", transition: "all 0.2s" }}
+                style={{
+                  filter: star <= activeStars ? "drop-shadow(0 2px 8px rgba(250,204,21,0.4))" : "none",
+                  transition: "all 0.2s",
+                }}
               >
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
               </svg>
@@ -170,8 +188,8 @@ async function fetchBusiness(slug: string) {
           ))}
         </div>
 
-        {/* Label */}
-        <div style={{ height: 28, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 28 }}>
+        {/* Star label */}
+        <div style={{ height: 28, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
           {activeStars > 0 && (
             <span style={{
               fontSize: 15, fontWeight: 600, color: labelColors[activeStars],
@@ -184,19 +202,23 @@ async function fetchBusiness(slug: string) {
           )}
         </div>
 
+
         {/* CTA Button */}
         <button
           onClick={() => selectedStar > 0 && !navigating && handleStarClick(selectedStar)}
           disabled={selectedStar === 0 || navigating}
           style={{
             width: "100%", padding: "16px 24px", borderRadius: 16, border: "none",
-            fontSize: 15, fontWeight: 700, letterSpacing: "0.02em", cursor: selectedStar === 0 ? "not-allowed" : "pointer",
+            fontSize: 15, fontWeight: 700, letterSpacing: "0.02em",
+            cursor: selectedStar === 0 ? "not-allowed" : "pointer",
             background: selectedStar > 0
               ? "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"
               : "#f1f5f9",
             color: selectedStar > 0 ? "white" : "#94a3b8",
             transition: "all 0.3s cubic-bezier(0.16,1,0.3,1)",
-            boxShadow: selectedStar > 0 ? "0 8px 32px rgba(15,52,96,0.35), 0 2px 8px rgba(15,52,96,0.2)" : "none",
+            boxShadow: selectedStar > 0
+              ? "0 8px 32px rgba(15,52,96,0.35), 0 2px 8px rgba(15,52,96,0.2)"
+              : "none",
             transform: selectedStar > 0 ? "translateY(-1px)" : "none",
           }}
         >
@@ -215,6 +237,7 @@ async function fetchBusiness(slug: string) {
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, 'SF Pro Display', BlinkMacSystemFont, 'Segoe UI', sans-serif; }
       `}</style>
     </main>
@@ -246,7 +269,7 @@ const styles: Record<string, React.CSSProperties> = {
     WebkitBackdropFilter: "blur(24px)",
     borderRadius: 28,
     padding: "40px 36px 32px",
-    maxWidth: 400, width: "100%",
+    maxWidth: 420, width: "100%",
     border: "1px solid rgba(255,255,255,0.9)",
     boxShadow: "0 24px 80px rgba(15,23,42,0.1), 0 4px 16px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,0.8)",
     display: "flex", flexDirection: "column", alignItems: "center",

@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await admin
       .from("businesses")
       .select("id, name, custom_url_slug, place_id, logo_url, is_active, plan, owner_email, created_at")
+      .neq("custom_url_slug", "system-default-tags")
       .order("name");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ businesses: data ?? [] });

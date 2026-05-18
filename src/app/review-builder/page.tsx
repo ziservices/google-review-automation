@@ -3,11 +3,17 @@
 import { useSearchParams, useRouter } from "next/navigation";
 import { useState, Suspense, useEffect, useCallback, useRef } from "react";
 import { getSupabase } from "@/lib/supabase";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
-const TAGS = [
-  "Amazing food 🍽️", "Friendly staff 😊", "Great value 💰", "Lovely atmosphere ✨",
-  "Quick service ⚡", "Very clean 🧹", "Good portions 🍱", "Will return 🔁",
-  "Best in area 🏆", "Highly recommend 👍", "Perfect vibes 🎶", "Outstanding 🌟",
+type ServiceTag = { id: string; emoji: string; label: string };
+
+const DEFAULT_TAGS: ServiceTag[] = [
+  { id: "d1", emoji: "😊", label: "Friendly Staff" },
+  { id: "d2", emoji: "✨", label: "Clean & Tidy" },
+  { id: "d3", emoji: "⚡", label: "Fast Service" },
+  { id: "d4", emoji: "💰", label: "Great Value" },
+  { id: "d5", emoji: "🏆", label: "Professional" },
+  { id: "d6", emoji: "❤️", label: "Caring" },
 ];
 
 const VARIANT_TONES = ["friendly", "casual", "formal"] as const;
@@ -28,10 +34,50 @@ function ReviewBuilderContent() {
   const businessId = searchParams.get("businessId") ?? "";
   const flowId = searchParams.get("flowId") ?? "";
   const placeId = searchParams.get("placeId") ?? "";
-  const plan = (searchParams.get("plan") ?? "basic").toLowerCase();
-  const maxTagSelections = plan === "pro" || plan === "enterprise" ? 3 : 2;
+  const maxTagSelections = 3;
+
+  // Fetch business slug and custom tags
+  useEffect(() => {
+    if (!businessId) return;
+    
+    async function fetchBusinessAndTags() {
+      const supabase = getSupabase();
+      const { data: business, error } = await supabase
+        .from("businesses")
+        .select("custom_url_slug")
+        .eq("id", businessId)
+        .single();
+
+      if (error || !business) {
+        setServiceTags(DEFAULT_TAGS);
+        setTagsLoaded(true);
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/review/${business.custom_url_slug}/tags`);
+        if (res.ok) {
+          const json = await res.json();
+          const tags: ServiceTag[] = Array.isArray(json.tags) && json.tags.length > 0
+            ? json.tags
+            : DEFAULT_TAGS;
+          setServiceTags(tags);
+        } else {
+          setServiceTags(DEFAULT_TAGS);
+        }
+      } catch {
+        setServiceTags(DEFAULT_TAGS);
+      } finally {
+        setTagsLoaded(true);
+      }
+    }
+
+    fetchBusinessAndTags();
+  }, [businessId]);
 
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [serviceTags, setServiceTags] = useState<ServiceTag[]>(DEFAULT_TAGS);
+  const [tagsLoaded, setTagsLoaded] = useState(false);
   const [reviewText, setReviewText] = useState("");
   const [generatingPair, setGeneratingPair] = useState(false);
   const [generatingThird, setGeneratingThird] = useState(false);
@@ -39,6 +85,7 @@ function ReviewBuilderContent() {
   const [selectedVariantIndex, setSelectedVariantIndex] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeStep, setActiveStep] = useState(1);
+  const [activeSlide, setActiveSlide] = useState(0);
 
   const reviewVariantsRef = useRef(reviewVariants);
   reviewVariantsRef.current = reviewVariants;
@@ -46,18 +93,23 @@ function ReviewBuilderContent() {
   const lastPairKeyRef = useRef<string | null>(null);
   const lastTripleKeyRef = useRef<string | null>(null);
 
-  function toggleTag(tag: string) {
+  function toggleTag(tagId: string) {
     setSelectedTags((prev) => {
-      if (prev.includes(tag)) return prev.filter((t) => t !== tag);
+      if (prev.includes(tagId)) return prev.filter((t) => t !== tagId);
       if (prev.length >= maxTagSelections) return prev;
-      return [...prev, tag];
+      return [...prev, tagId];
     });
     if (activeStep === 1) setActiveStep(2);
   }
 
   const tagLabelsFrom = useCallback(
-    (tags: string[]) => tags.map((t) => t.replace(/\s[\S]+$/, "")),
-    []
+    (tagIds: string[]) => {
+      return tagIds.map((id) => {
+        const tag = serviceTags.find(t => t.id === id);
+        return tag ? tag.label : id;
+      });
+    },
+    [serviceTags]
   );
 
   const fetchReviewSlot = useCallback(
@@ -188,6 +240,13 @@ function ReviewBuilderContent() {
   const readyForReviews = selectedTags.length >= 2;
   const hasThirdTag = selectedTags.length >= 3;
   const showThirdRow = readyForReviews;
+  const totalSlides = showThirdRow ? 3 : 2;
+
+  useEffect(() => {
+    if (activeSlide >= totalSlides) {
+      setActiveSlide(Math.max(0, totalSlides - 1));
+    }
+  }, [totalSlides, activeSlide]);
 
   async function copyAndRedirect() {
     if (!reviewText.trim() || submitting) return;
@@ -246,18 +305,16 @@ function ReviewBuilderContent() {
             <div>
               <p style={rb.stepTitle}>What did you love?</p>
               <p style={rb.stepDesc}>
-                {maxTagSelections >= 3
-                  ? "Pick two or three likes — reviews appear automatically. A third like unlocks a third option."
-                  : "Pick two likes for your plan (Basic). Upgrade to Pro for a third AI review option."}
+                Pick two or three likes — reviews appear automatically. A third like unlocks a third option.
               </p>
             </div>
           </div>
           <div style={rb.tagsGrid}>
-            {TAGS.map((tag) => {
-              const selected = selectedTags.includes(tag);
+            {serviceTags.map((tag) => {
+              const selected = selectedTags.includes(tag.id);
               const atCap = !selected && selectedTags.length >= maxTagSelections;
               return (
-              <button key={tag} type="button" disabled={atCap} onClick={() => toggleTag(tag)} style={{
+              <button key={tag.id} type="button" disabled={atCap} onClick={() => toggleTag(tag.id)} style={{
                 padding: "8px 14px", borderRadius: 99, fontSize: 13, fontWeight: 500,
                 cursor: atCap ? "not-allowed" : "pointer", opacity: atCap ? 0.45 : 1, transition: "all 0.2s cubic-bezier(0.16,1,0.3,1)",
                 border: selected ? "1.5px solid #6366f1" : "1px solid #e2e8f0",
@@ -266,7 +323,7 @@ function ReviewBuilderContent() {
                 boxShadow: selected ? "0 2px 8px rgba(99,102,241,0.15)" : "none",
                 transform: selected ? "scale(1.02)" : "scale(1)",
               }}>
-                {tag}
+                {tag.emoji} {tag.label}
               </button>
             );})}
           </div>
@@ -289,98 +346,119 @@ function ReviewBuilderContent() {
               Your review options will show here once step 1 is done.
             </p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-                {([0, 1] as const).map((slot) => {
-                  const text = reviewVariants[slot];
-                  const isGen = generatingPair;
-                  const isSel = selectedVariantIndex === slot && !!text;
-                  return (
-                    <button
-                      key={slot}
-                      type="button"
-                      disabled={isGen || !text}
-                      onClick={() => {
-                        if (!text || isGen) return;
-                        selectVariant(slot, text);
-                      }}
-                      style={{
-                        textAlign: "left",
-                        width: "100%",
-                        padding: "14px 16px",
-                        borderRadius: 12,
-                        border: isSel ? "2px solid #8b5cf6" : "1px solid #e2e8f0",
-                        background: isSel ? "#faf5ff" : "#fafbff",
-                        cursor: isGen || !text ? "default" : "pointer",
-                        transition: "all 0.2s",
-                        boxShadow: isSel ? "0 4px 16px rgba(139,92,246,0.15)" : "none",
-                      }}
-                    >
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>
-                        Review idea {slot + 1}
-                        {isSel ? " — selected" : text ? " — tap to use this one" : ""}
-                      </div>
-                      {isGen ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#64748b" }}>
-                          <span style={{ width: 16, height: 16, border: "2px solid #cbd5e1", borderTopColor: "#8b5cf6", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                          Writing your review…
-                        </div>
-                      ) : text ? (
-                        <p style={{ fontSize: 14, color: "#1e293b", lineHeight: 1.55, margin: 0 }}>{text}</p>
-                      ) : null}
-                    </button>
-                  );
-                })}
-                {showThirdRow && (
-                  (() => {
-                    const slot = 2 as const;
+            <div style={{ position: "relative", marginBottom: 16 }}>
+              {/* Slider Viewport */}
+              <div style={{ overflow: "hidden", borderRadius: 12, paddingBottom: 4 }}>
+                {/* Slider Track */}
+                <div
+                  style={{
+                    display: "flex",
+                    transition: "transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
+                    transform: `translateX(-${activeSlide * 100}%)`,
+                  }}
+                >
+                  {[0, 1, 2].map((slot) => {
+                    if (slot === 2 && !showThirdRow) return null;
+                    
                     const text = reviewVariants[slot];
-                    const isGen = generatingThird;
+                    const isGen = slot === 2 ? generatingThird : generatingPair;
                     const isSel = selectedVariantIndex === slot && !!text;
+                    
                     return (
-                      <button
-                        key={slot}
-                        type="button"
-                        disabled={isGen || !text}
-                        onClick={() => {
-                          if (isGen || !text) return;
-                          selectVariant(slot, text);
-                        }}
-                        style={{
-                          textAlign: "left",
-                          width: "100%",
-                          padding: "14px 16px",
-                          borderRadius: 12,
-                          border: isSel ? "2px solid #8b5cf6" : "1px solid #e2e8f0",
-                          background: isSel ? "#faf5ff" : "#fafbff",
-                          cursor: isGen || !text ? "default" : "pointer",
-                          transition: "all 0.2s",
-                          boxShadow: isSel ? "0 4px 16px rgba(139,92,246,0.15)" : "none",
-                          opacity: !hasThirdTag && !isGen ? 0.95 : 1,
-                        }}
-                      >
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>
-                          Review idea 3
-                          {isSel ? " — selected" : text ? " — tap to use this one" : ""}
-                        </div>
-                        {isGen ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#64748b" }}>
-                            <span style={{ width: 16, height: 16, border: "2px solid #cbd5e1", borderTopColor: "#8b5cf6", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                            Writing idea 3 from your picks…
+                      <div key={slot} style={{ flex: "0 0 100%", padding: "2px" }}>
+                        <button
+                          type="button"
+                          disabled={isGen || !text}
+                          onClick={() => {
+                            if (isGen || !text) return;
+                            selectVariant(slot, text);
+                          }}
+                          style={{
+                            textAlign: "left",
+                            width: "100%",
+                            padding: "16px 20px",
+                            borderRadius: 12,
+                            border: isSel ? "2px solid #8b5cf6" : "1px solid #e2e8f0",
+                            background: isSel ? "#faf5ff" : "#fafbff",
+                            cursor: isGen || !text ? "default" : "pointer",
+                            transition: "all 0.2s",
+                            boxShadow: isSel ? "0 4px 16px rgba(139,92,246,0.15)" : "0 2px 6px rgba(0,0,0,0.02)",
+                            opacity: (slot === 2 && !hasThirdTag && !isGen) ? 0.95 : 1,
+                            minHeight: 140,
+                            display: "flex",
+                            flexDirection: "column",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 10 }}>
+                            Review idea {slot + 1}
+                            {isSel ? " — selected" : text ? " — tap to use this one" : ""}
                           </div>
-                        ) : text ? (
-                          <p style={{ fontSize: 14, color: "#1e293b", lineHeight: 1.55, margin: 0 }}>{text}</p>
-                        ) : (
-                          <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
-                            {hasThirdTag
-                              ? "Hang tight — idea 3 will show here in a moment."
-                              : "Go back to step 1 and choose one more thing you loved — idea 3 will appear here automatically."}
-                          </p>
-                        )}
-                      </button>
+                          
+                          {isGen ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#64748b", marginTop: "auto", marginBottom: "auto" }}>
+                              <span style={{ width: 18, height: 18, border: "2px solid #cbd5e1", borderTopColor: "#8b5cf6", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                              {slot === 2 ? "Writing idea 3 from your picks…" : "Writing your review…"}
+                            </div>
+                          ) : text ? (
+                            <p style={{ fontSize: 15, color: "#1e293b", lineHeight: 1.55, margin: 0 }}>{text}</p>
+                          ) : slot === 2 ? (
+                            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
+                              {hasThirdTag
+                                ? "Hang tight — idea 3 will show here in a moment."
+                                : "Go back to step 1 and choose one more thing you loved — idea 3 will appear here automatically."}
+                            </p>
+                          ) : null}
+                        </button>
+                      </div>
                     );
-                  })()
-                )}
+                  })}
+                </div>
               </div>
+
+              {/* Navigation Controls */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, padding: "0 4px" }}>
+                <button
+                  onClick={() => setActiveSlide(s => Math.max(0, s - 1))}
+                  disabled={activeSlide === 0}
+                  style={{
+                    background: "none", border: "none", cursor: activeSlide === 0 ? "default" : "pointer",
+                    opacity: activeSlide === 0 ? 0.3 : 1, display: "flex", alignItems: "center", justifyContent: "center",
+                    padding: 8, color: "#64748b", transition: "opacity 0.2s"
+                  }}
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                
+                <div style={{ display: "flex", gap: 8 }}>
+                  {Array.from({ length: totalSlides }).map((_, i) => (
+                    <div
+                      key={i}
+                      onClick={() => setActiveSlide(i)}
+                      style={{
+                        width: activeSlide === i ? 20 : 8,
+                        height: 8,
+                        borderRadius: 4,
+                        background: activeSlide === i ? "#8b5cf6" : "#e2e8f0",
+                        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                        cursor: "pointer"
+                      }}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setActiveSlide(s => Math.min(totalSlides - 1, s + 1))}
+                  disabled={activeSlide === totalSlides - 1}
+                  style={{
+                    background: "none", border: "none", cursor: activeSlide === totalSlides - 1 ? "default" : "pointer",
+                    opacity: activeSlide === totalSlides - 1 ? 0.3 : 1, display: "flex", alignItems: "center", justifyContent: "center",
+                    padding: 8, color: "#64748b", transition: "opacity 0.2s"
+                  }}
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            </div>
           )}
 
           <textarea
