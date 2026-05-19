@@ -12,7 +12,7 @@
  *     ADD COLUMN IF NOT EXISTS custom_tags jsonb DEFAULT NULL;
  *
  * Tag shape stored in custom_tags:
- *   { tags: Array<{ id: string; label: string; emoji: string }> }
+ *   { serviceTags: Array<{...}>, categoryTags: Array<{...}> }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -72,31 +72,33 @@ export async function PUT(
   const { id } = await params;
 
   const body = await req.json().catch(() => null);
-  if (!body || !Array.isArray(body.tags)) {
-    return NextResponse.json(
-      { error: "Body must be { tags: ServiceTag[] }" },
-      { status: 400 }
-    );
+  if (!body) {
+    return NextResponse.json({ error: "Body missing" }, { status: 400 });
   }
 
-  // Sanitize tags — keep only id, label, emoji
-  const tags = (body.tags as Array<{ id?: string; label?: string; emoji?: string }>)
-    .filter((t) => typeof t.label === "string" && t.label.trim())
-    .map((t) => ({
-      id: t.id ?? Math.random().toString(36).slice(2),
-      label: String(t.label).trim().slice(0, 60),
-      emoji: String(t.emoji ?? "⭐").slice(0, 4),
-    }));
+  const sanitizeTags = (arr: any[]) => {
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((t) => typeof t.label === "string" && t.label.trim())
+      .map((t) => ({
+        id: t.id ?? Math.random().toString(36).slice(2),
+        label: String(t.label).trim().slice(0, 60),
+        emoji: String(t.emoji ?? "⭐").slice(0, 4),
+      }));
+  };
+
+  const serviceTags = sanitizeTags(body.serviceTags || body.tags || []);
+  const categoryTags = sanitizeTags(body.categoryTags || []);
 
   const supabase = adminClient();
   const { error } = await supabase
     .from("businesses")
-    .update({ custom_tags: { tags } })
+    .update({ custom_tags: { serviceTags, categoryTags } })
     .eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, tags });
+  return NextResponse.json({ ok: true, serviceTags, categoryTags });
 }
