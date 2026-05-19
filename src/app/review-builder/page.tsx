@@ -1,13 +1,18 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState, Suspense, useEffect, useCallback, useRef } from "react";
+import { useState, Suspense, useEffect, useCallback, useRef, useMemo } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 type ServiceTag = { id: string; emoji: string; label: string };
 
-const DEFAULT_TAGS: ServiceTag[] = [
+const DEFAULT_SERVICE_TAGS: ServiceTag[] = [
+  { id: "ds1", emoji: "🛠️", label: "Service" },
+  { id: "ds2", emoji: "📦", label: "Product" },
+];
+
+const DEFAULT_CATEGORY_TAGS: ServiceTag[] = [
   { id: "d1", emoji: "😊", label: "Friendly Staff" },
   { id: "d2", emoji: "✨", label: "Clean & Tidy" },
   { id: "d3", emoji: "⚡", label: "Fast Service" },
@@ -18,9 +23,9 @@ const DEFAULT_TAGS: ServiceTag[] = [
 
 const VARIANT_TONES = ["friendly", "casual", "formal"] as const;
 const VARIANT_HINTS = [
-  "Lead with food or drink quality.",
-  "Lead with service or atmosphere.",
-  "Lead with overall vibe and whether you'd return.",
+  "Open with what specifically impressed you about the service. Use a personal, first-person angle.",
+  "Open with the overall atmosphere or vibe. Keep it short and conversational, like texting a friend.",
+  "Open with the outcome or result you got. Be direct and factual, then close with a recommendation.",
 ] as const;
 
 function ReviewBuilderContent() {
@@ -49,24 +54,27 @@ function ReviewBuilderContent() {
         .single();
 
       if (error || !business) {
-        setServiceTags(DEFAULT_TAGS);
+        setServiceTags(DEFAULT_SERVICE_TAGS);
+        setCategoryTags(DEFAULT_CATEGORY_TAGS);
         setTagsLoaded(true);
         return;
       }
+
+      setBusinessSlug(business.custom_url_slug);
 
       try {
         const res = await fetch(`/api/review/${business.custom_url_slug}/tags`);
         if (res.ok) {
           const json = await res.json();
-          const tags: ServiceTag[] = Array.isArray(json.tags) && json.tags.length > 0
-            ? json.tags
-            : DEFAULT_TAGS;
-          setServiceTags(tags);
+          setServiceTags(json.serviceTags && json.serviceTags.length > 0 ? json.serviceTags : DEFAULT_SERVICE_TAGS);
+          setCategoryTags(json.categoryTags && json.categoryTags.length > 0 ? json.categoryTags : DEFAULT_CATEGORY_TAGS);
         } else {
-          setServiceTags(DEFAULT_TAGS);
+          setServiceTags(DEFAULT_SERVICE_TAGS);
+          setCategoryTags(DEFAULT_CATEGORY_TAGS);
         }
       } catch {
-        setServiceTags(DEFAULT_TAGS);
+        setServiceTags(DEFAULT_SERVICE_TAGS);
+        setCategoryTags(DEFAULT_CATEGORY_TAGS);
       } finally {
         setTagsLoaded(true);
       }
@@ -75,8 +83,13 @@ function ReviewBuilderContent() {
     fetchBusinessAndTags();
   }, [businessId]);
 
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [serviceTags, setServiceTags] = useState<ServiceTag[]>(DEFAULT_TAGS);
+  const [selectedServiceTag, setSelectedServiceTag] = useState<string | null>(null);
+  const [selectedCategoryTags, setSelectedCategoryTags] = useState<string[]>([]);
+  const [serviceTags, setServiceTags] = useState<ServiceTag[]>(DEFAULT_SERVICE_TAGS);
+  const [categoryTags, setCategoryTags] = useState<ServiceTag[]>(DEFAULT_CATEGORY_TAGS);
+  const [businessSlug, setBusinessSlug] = useState<string>("");
+
+  const selectedTags = useMemo(() => [selectedServiceTag, ...selectedCategoryTags].filter(Boolean) as string[], [selectedServiceTag, selectedCategoryTags]);
   const [tagsLoaded, setTagsLoaded] = useState(false);
   const [reviewText, setReviewText] = useState("");
   const [generatingPair, setGeneratingPair] = useState(false);
@@ -92,56 +105,79 @@ function ReviewBuilderContent() {
   const workflowGenId = useRef(0);
   const lastPairKeyRef = useRef<string | null>(null);
   const lastTripleKeyRef = useRef<string | null>(null);
+  const lastManualSlideRef = useRef<number>(0); // timestamp of last manual slide
 
-  function toggleTag(tagId: string) {
-    setSelectedTags((prev) => {
-      if (prev.includes(tagId)) return prev.filter((t) => t !== tagId);
+  function toggleServiceTag(tagId: string) {
+    setSelectedServiceTag(prev => prev === tagId ? null : tagId);
+    if (activeStep === 1 && selectedCategoryTags.length > 0) setActiveStep(2);
+  }
+
+  function toggleCategoryTag(tagId: string) {
+    setSelectedCategoryTags(prev => {
+      if (prev.includes(tagId)) return prev.filter(t => t !== tagId);
       if (prev.length >= maxTagSelections) return prev;
       return [...prev, tagId];
     });
-    if (activeStep === 1) setActiveStep(2);
+    if (activeStep === 1 && selectedServiceTag) setActiveStep(2);
   }
 
   const tagLabelsFrom = useCallback(
     (tagIds: string[]) => {
+      const allTags = [...serviceTags, ...categoryTags];
       return tagIds.map((id) => {
-        const tag = serviceTags.find(t => t.id === id);
+        const tag = allTags.find(t => t.id === id);
         return tag ? tag.label : id;
       });
     },
-    [serviceTags]
+    [serviceTags, categoryTags]
+  );
+
+  // Returns { serviceLabel, categoryLabels } so the API can use them correctly
+  const tagPayloadFrom = useCallback(
+    (tagIds: string[]) => {
+      const serviceLabel = tagIds
+        .map(id => serviceTags.find(t => t.id === id))
+        .filter(Boolean)
+        .map(t => t!.label)[0] ?? null;
+      const categoryLabels = tagIds
+        .map(id => categoryTags.find(t => t.id === id))
+        .filter(Boolean)
+        .map(t => t!.label);
+      return { serviceLabel, categoryLabels };
+    },
+    [serviceTags, categoryTags]
   );
 
   const fetchReviewSlot = useCallback(
-    async (slotIndex: 0 | 1 | 2, tagLabels: string[]) => {
+    async (slotIndex: 0 | 1 | 2, tagIds: string[]) => {
       const tone = VARIANT_TONES[slotIndex];
       const variantHint = VARIANT_HINTS[slotIndex];
+      const { serviceLabel, categoryLabels } = tagPayloadFrom(tagIds);
       let text = "";
       try {
         const res = await fetch("/api/generate-review", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rating, tags: tagLabels, tone, variantHint }),
+          body: JSON.stringify({ rating, serviceTag: serviceLabel, categoryTags: categoryLabels, tone, variantHint }),
         });
         const data = await res.json();
         text = typeof data.review === "string" ? data.review : "";
       } catch {
         text =
-          "Really enjoyed our visit here! The food was delicious and the staff were so welcoming. Definitely coming back soon!";
+          "Had a great experience! The service was excellent and the team was very helpful. Highly recommended!";
       }
       return text || null;
     },
-    [rating]
+    [rating, tagPayloadFrom]
   );
 
   useEffect(() => {
     const runId = ++workflowGenId.current;
     const tagsKey = [...selectedTags].sort().join("\0");
     const n = selectedTags.length;
-    const tagLabels = tagLabelsFrom(selectedTags);
 
     const fallback =
-      "Really enjoyed our visit here! The food was delicious and the staff were so welcoming. Definitely coming back soon!";
+      "Had a great experience! The service was excellent and the team was very helpful. Highly recommended!";
 
     if (n < 2) {
       lastPairKeyRef.current = null;
@@ -173,8 +209,8 @@ function ReviewBuilderContent() {
         lastTripleKeyRef.current = null;
         setReviewVariants([null, null, null]);
         const [a, b] = await Promise.all([
-          fetchReviewSlot(0, tagLabels),
-          fetchReviewSlot(1, tagLabels),
+          fetchReviewSlot(0, selectedTags),
+          fetchReviewSlot(1, selectedTags),
         ]);
         if (runId !== workflowGenId.current) return;
         const v0 = a ?? fallback;
@@ -199,8 +235,8 @@ function ReviewBuilderContent() {
         setGeneratingThird(false);
         setReviewVariants([null, null, null]);
         const [a, b] = await Promise.all([
-          fetchReviewSlot(0, tagLabels),
-          fetchReviewSlot(1, tagLabels),
+          fetchReviewSlot(0, selectedTags),
+          fetchReviewSlot(1, selectedTags),
         ]);
         if (runId !== workflowGenId.current) return;
         p0 = a ?? fallback;
@@ -219,7 +255,7 @@ function ReviewBuilderContent() {
 
       setGeneratingThird(true);
       setReviewVariants([p0, p1, null]);
-      const t2 = await fetchReviewSlot(2, tagLabels);
+      const t2 = await fetchReviewSlot(2, selectedTags);
       if (runId !== workflowGenId.current) return;
       const third = t2 ?? fallback;
       lastTripleKeyRef.current = tagsKey;
@@ -229,7 +265,7 @@ function ReviewBuilderContent() {
       setReviewText(third);
       setActiveStep(3);
     })();
-  }, [selectedTags, fetchReviewSlot, tagLabelsFrom]);
+  }, [selectedTags, fetchReviewSlot]);
 
   function selectVariant(slotIndex: number, text: string) {
     setSelectedVariantIndex(slotIndex);
@@ -237,7 +273,7 @@ function ReviewBuilderContent() {
     setActiveStep(3);
   }
 
-  const readyForReviews = selectedTags.length >= 2;
+  const readyForReviews = selectedServiceTag !== null && selectedCategoryTags.length >= 1;
   const hasThirdTag = selectedTags.length >= 3;
   const showThirdRow = readyForReviews;
   const totalSlides = showThirdRow ? 3 : 2;
@@ -247,6 +283,20 @@ function ReviewBuilderContent() {
       setActiveSlide(Math.max(0, totalSlides - 1));
     }
   }, [totalSlides, activeSlide]);
+
+  // Auto-advance slide every 5 seconds when reviews are ready and user hasn't selected one
+  useEffect(() => {
+    if (!readyForReviews || generatingPair) return;
+    const timer = setInterval(() => {
+      // Pause auto-scroll for 8s after any manual interaction
+      if (Date.now() - lastManualSlideRef.current < 8000) return;
+      setActiveSlide(s => {
+        const next = s + 1;
+        return next >= totalSlides ? 0 : next;
+      });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [readyForReviews, generatingPair, totalSlides]);
 
   async function copyAndRedirect() {
     if (!reviewText.trim() || submitting) return;
@@ -264,7 +314,7 @@ function ReviewBuilderContent() {
       window.open(
   `https://search.google.com/local/writereview?placeid=${placeId}`
 )
-      router.push("/thank-you?type=review");
+      router.push(`/thank-you?type=review&slug=${encodeURIComponent(businessSlug)}&rating=${rating}`);
     }, 600);
   }
 
@@ -305,27 +355,54 @@ function ReviewBuilderContent() {
             <div>
               <p style={rb.stepTitle}>What did you love?</p>
               <p style={rb.stepDesc}>
-                Pick two or three likes — reviews appear automatically. A third like unlocks a third option.
+                Pick ONE Service Tag and AT LEAST ONE Category Tag.
               </p>
             </div>
           </div>
-          <div style={rb.tagsGrid}>
-            {serviceTags.map((tag) => {
-              const selected = selectedTags.includes(tag.id);
-              const atCap = !selected && selectedTags.length >= maxTagSelections;
-              return (
-              <button key={tag.id} type="button" disabled={atCap} onClick={() => toggleTag(tag.id)} style={{
-                padding: "8px 14px", borderRadius: 99, fontSize: 13, fontWeight: 500,
-                cursor: atCap ? "not-allowed" : "pointer", opacity: atCap ? 0.45 : 1, transition: "all 0.2s cubic-bezier(0.16,1,0.3,1)",
-                border: selected ? "1.5px solid #6366f1" : "1px solid #e2e8f0",
-                background: selected ? "#eff6ff" : "white",
-                color: selected ? "#4f46e5" : "#475569",
-                boxShadow: selected ? "0 2px 8px rgba(99,102,241,0.15)" : "none",
-                transform: selected ? "scale(1.02)" : "scale(1)",
-              }}>
-                {tag.emoji} {tag.label}
-              </button>
-            );})}
+          
+          <div style={{ marginBottom: 20 }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 10 }}>Service (Pick exactly 1)</p>
+            <div style={rb.tagsGrid}>
+              {serviceTags.map((tag) => {
+                const selected = selectedServiceTag === tag.id;
+                return (
+                <button key={tag.id} type="button" onClick={() => toggleServiceTag(tag.id)} style={{
+                  padding: "8px 14px", borderRadius: 99, fontSize: 13, fontWeight: 500,
+                  cursor: "pointer", transition: "all 0.2s cubic-bezier(0.16,1,0.3,1)",
+                  border: selected ? "1.5px solid #6366f1" : "1px solid #e2e8f0",
+                  background: selected ? "#eff6ff" : "white",
+                  color: selected ? "#4f46e5" : "#475569",
+                  boxShadow: selected ? "0 2px 8px rgba(99,102,241,0.15)" : "none",
+                  transform: selected ? "scale(1.02)" : "scale(1)",
+                  width: "100%", textAlign: "center",
+                }}>
+                  {tag.emoji} {tag.label}
+                </button>
+              );})}
+            </div>
+          </div>
+
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 10 }}>Categories (Pick at least 1)</p>
+            <div style={rb.tagsGrid}>
+              {categoryTags.map((tag) => {
+                const selected = selectedCategoryTags.includes(tag.id);
+                const atCap = !selected && selectedCategoryTags.length >= maxTagSelections;
+                return (
+                <button key={tag.id} type="button" disabled={atCap} onClick={() => toggleCategoryTag(tag.id)} style={{
+                  padding: "8px 14px", borderRadius: 99, fontSize: 13, fontWeight: 500,
+                  cursor: atCap ? "not-allowed" : "pointer", opacity: atCap ? 0.45 : 1, transition: "all 0.2s cubic-bezier(0.16,1,0.3,1)",
+                  border: selected ? "1.5px solid #6366f1" : "1px solid #e2e8f0",
+                  background: selected ? "#eff6ff" : "white",
+                  color: selected ? "#4f46e5" : "#475569",
+                  boxShadow: selected ? "0 2px 8px rgba(99,102,241,0.15)" : "none",
+                  transform: selected ? "scale(1.02)" : "scale(1)",
+                  width: "100%", textAlign: "center",
+                }}>
+                  {tag.emoji} {tag.label}
+                </button>
+              );})}
+            </div>
           </div>
         </div>
 
@@ -418,7 +495,7 @@ function ReviewBuilderContent() {
               {/* Navigation Controls */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, padding: "0 4px" }}>
                 <button
-                  onClick={() => setActiveSlide(s => Math.max(0, s - 1))}
+                  onClick={() => { lastManualSlideRef.current = Date.now(); setActiveSlide(s => Math.max(0, s - 1)); }}
                   disabled={activeSlide === 0}
                   style={{
                     background: "none", border: "none", cursor: activeSlide === 0 ? "default" : "pointer",
@@ -433,7 +510,7 @@ function ReviewBuilderContent() {
                   {Array.from({ length: totalSlides }).map((_, i) => (
                     <div
                       key={i}
-                      onClick={() => setActiveSlide(i)}
+                      onClick={() => { lastManualSlideRef.current = Date.now(); setActiveSlide(i); }}
                       style={{
                         width: activeSlide === i ? 20 : 8,
                         height: 8,
@@ -447,7 +524,7 @@ function ReviewBuilderContent() {
                 </div>
 
                 <button
-                  onClick={() => setActiveSlide(s => Math.min(totalSlides - 1, s + 1))}
+                  onClick={() => { lastManualSlideRef.current = Date.now(); setActiveSlide(s => Math.min(totalSlides - 1, s + 1)); }}
                   disabled={activeSlide === totalSlides - 1}
                   style={{
                     background: "none", border: "none", cursor: activeSlide === totalSlides - 1 ? "default" : "pointer",
@@ -562,7 +639,7 @@ const rb: Record<string, React.CSSProperties> = {
   },
   stepTitle: { fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 2 },
   stepDesc: { fontSize: 12, color: "#94a3b8" },
-  tagsGrid: { display: "flex", flexWrap: "wrap", gap: 8 },
+  tagsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 8 },
 };
 
 export default function ReviewBuilderPage() {

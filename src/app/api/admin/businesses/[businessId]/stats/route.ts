@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   let allowed = validateSuperAdminRequest(req);
   if (!allowed) {
     try {
-      const supabase = await createSupabaseServerClient();
+      const supabase = await createClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();
