@@ -4,8 +4,9 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useState, Suspense, useEffect } from "react";
 
 const ISSUES = [
-  "Slow service ⏱️", "Food quality 🍽️", "Wrong order ❌", "Cleanliness 🧹",
-  "Rude staff 😤", "High prices 💸", "Long wait ⌛", "Noise level 🔊",
+  "Slow response ⏱️", "Poor quality 📉", "Not as described ❌", "Unprofessional 😤",
+  "Poor communication 📞", "Overpriced 💸", "Long wait ⌛", "Didn't meet expectations 😕",
+  "Lack of follow-up 🔄", "Technical issues 🛠️", "Billing problem 💳", "Rude staff 😠",
 ];
 
 function FeedbackContent() {
