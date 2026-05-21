@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = getSupabase();
-    const { businessId, flowId } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
-    if (!flowId) {
+    const { businessId, flowId } = body;
+
+    if (!flowId || typeof flowId !== "string") {
       return NextResponse.json({ error: "flowId required" }, { status: 400 });
     }
+    if (!businessId || typeof businessId !== "string") {
+      return NextResponse.json({ error: "businessId required" }, { status: 400 });
+    }
 
-    const { error } = await supabase
+    // Use admin client so RLS never silently blocks the update
+    const admin = getSupabaseAdmin();
+    const { error } = await admin
       .from("reviews_flow")
       .update({ submitted_to_google: true })
       .eq("id", flowId)

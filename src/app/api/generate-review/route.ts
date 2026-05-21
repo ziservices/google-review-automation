@@ -15,12 +15,19 @@ export async function POST(req: NextRequest) {
   } = body;
 
   // Support both new structured payload and legacy flat tags array
-  const service: string = serviceTag ?? (Array.isArray(tags) ? tags[0] : null) ?? "service";
-  const categories: string[] = Array.isArray(categoryTagsRaw)
-    ? categoryTagsRaw
-    : Array.isArray(tags)
-    ? tags.slice(1)
-    : [];
+  const service: string = (
+    typeof serviceTag === "string" ? serviceTag.trim().slice(0, 60) :
+    Array.isArray(tags) && typeof tags[0] === "string" ? tags[0].trim().slice(0, 60) : "service"
+  ) || "service";
+
+  const categories: string[] = (
+    Array.isArray(categoryTagsRaw) ? categoryTagsRaw :
+    Array.isArray(tags) ? tags.slice(1) : []
+  )
+    .filter((t): t is string => typeof t === "string")
+    .map(t => t.trim().slice(0, 60))
+    .filter(Boolean)
+    .slice(0, 10); // max 10 category tags
 
   try {
     const apiKey = process.env.OPENAI_API_KEY;

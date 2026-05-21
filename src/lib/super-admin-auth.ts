@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 
 export function validateSuperAdminRequest(req: NextRequest): boolean {
   const expected = process.env.REVIEWFLOW_SUPER_ADMIN_SECRET;
@@ -7,7 +8,16 @@ export function validateSuperAdminRequest(req: NextRequest): boolean {
   const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
   const header = req.headers.get("x-reviewflow-super-admin-secret");
   const provided = bearer || header;
-  return !!provided && provided === expected;
+  if (!provided) return false;
+  // Timing-safe comparison to prevent timing attacks
+  try {
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 export function superAdminGuard(req: NextRequest): NextResponse | null {

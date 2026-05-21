@@ -16,6 +16,7 @@ function FeedbackContent() {
 
   const rating = parseInt(searchParams.get("rating") ?? "1");
   const businessId = searchParams.get("businessId") ?? "";
+  const flowId = searchParams.get("flowId") ?? "";
 
   const [feedbackText, setFeedbackText] = useState("");
   const [selectedIssues, setSelectedIssues] = useState<string[]>([]);
@@ -34,7 +35,9 @@ function FeedbackContent() {
       await fetch("/api/submit-feedback", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          businessId, rating,
+          businessId,
+          rating,
+          flowId,
           feedbackText: [selectedIssues.join(", "), feedbackText].filter(Boolean).join(" — "),
         }),
       });

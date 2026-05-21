@@ -27,15 +27,49 @@ const planMeta: Record<string, { color: string; bg: string; border: string }> = 
 
 type Props = {
   business: { id: string; name: string; custom_url_slug: string; is_active?: boolean | null; plan?: string | null };
-  totalScans: number; totalRatings: number; googleRedirects: number;
-  conversionRate: number; avgRating: string;
+  totalScans: number;
+  totalRatings: number;
+  googleRedirects: number;
+  conversionRate: number;
+  avgRating: string;
   recentFeedbacks: { id: string; rating: number; feedback_text: string; created_at: string }[];
   appUrl: string;
 };
 
+// ── Copy button with visual feedback ────────────────────────────────────────
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(text).catch(() => {});
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      style={{
+        background: copied ? "#22c55e" : T.primary,
+        border: "none", borderRadius: 8, padding: "5px 12px",
+        fontSize: 11, fontWeight: 600, color: "#fff",
+        cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap",
+        fontFamily: "'Plus Jakarta Sans',sans-serif",
+        transition: "background 0.2s",
+      }}
+    >
+      {copied ? "✓ Copied" : "Copy"}
+    </button>
+  );
+}
+
+// ── Main dashboard component ─────────────────────────────────────────────────
 export default function DashboardClient({
-  business, totalScans, totalRatings, googleRedirects,
-  conversionRate, avgRating, recentFeedbacks, appUrl,
+  business,
+  totalScans,
+  totalRatings,
+  googleRedirects,
+  conversionRate,
+  avgRating,
+  recentFeedbacks,
+  appUrl,
 }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -67,19 +101,15 @@ export default function DashboardClient({
 
       <main style={{ minHeight: "100vh", background: T.bg, fontFamily: "'Inter', sans-serif" }}>
 
-        {/* Overlay — tapping closes sidebar */}
+        {/* Overlay (mobile) */}
         {sidebarOpen && (
           <div
             onClick={() => setSidebarOpen(false)}
-            style={{
-              position: "fixed", inset: 0, zIndex: 150,
-              background: "rgba(0,0,0,0.45)",
-              backdropFilter: "blur(2px)",
-            }}
+            style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)" }}
           />
         )}
 
-        {/* Hamburger */}
+        {/* Hamburger (mobile only) */}
         <button
           className="db-hamburger"
           onClick={() => setSidebarOpen(o => !o)}
@@ -100,15 +130,8 @@ export default function DashboardClient({
         {/* Sidebar */}
         <aside
           className={`db-sidebar${sidebarOpen ? " open" : ""}`}
-          style={{
-            background: T.sidebarBg,
-            borderRight: `1px solid ${T.border}`,
-            display: "flex", flexDirection: "column",
-            padding: "28px 16px",
-            boxShadow: "1px 0 0 rgba(0,0,0,0.03)",
-          }}
+          style={{ background: T.sidebarBg, borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", padding: "28px 16px", boxShadow: "1px 0 0 rgba(0,0,0,0.03)" }}
         >
-          {/* Logo */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 40, paddingLeft: 8 }}>
             <div style={{ width: 36, height: 36, borderRadius: 11, background: `linear-gradient(135deg,${T.gradStart},${T.gradEnd})`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: T.orangeGlow, flexShrink: 0 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
@@ -149,7 +172,7 @@ export default function DashboardClient({
           </div>
         </aside>
 
-        {/* Main */}
+        {/* Main content */}
         <div className="db-main">
 
           {/* Header */}
@@ -169,7 +192,7 @@ export default function DashboardClient({
             </div>
           </div>
 
-          {/* Stats */}
+          {/* Stats grid */}
           <div className="db-stats-grid">
             {stats.map(s => (
               <div key={s.label} className="stat-card" style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 18, padding: "22px 20px", boxShadow: T.shadow, animationDelay: s.delay }}>
@@ -190,8 +213,10 @@ export default function DashboardClient({
                 <p style={{ fontSize: 11, fontWeight: 700, color: T.textSec, textTransform: "uppercase", letterSpacing: "0.08em" }}>Your Review Link</p>
               </div>
               <div style={{ background: "rgba(246,110,18,0.05)", border: "1px solid rgba(246,110,18,0.15)", borderRadius: 12, padding: "12px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
-                <p style={{ fontSize: 12, color: T.primary, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 }}>{appUrl}/review/{business.custom_url_slug}</p>
-                <button style={{ background: T.primary, border: "none", borderRadius: 8, padding: "5px 12px", fontSize: 11, fontWeight: 600, color: "#fff", cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap", fontFamily: "'Plus Jakarta Sans',sans-serif" }}>Copy</button>
+                <p style={{ fontSize: 12, color: T.primary, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 }}>
+                  {appUrl}/review/{business.custom_url_slug}
+                </p>
+                <CopyButton text={`${appUrl}/review/${business.custom_url_slug}`} />
               </div>
               <QRCodeCard businessName={business.name} slug={business.custom_url_slug} />
             </div>
