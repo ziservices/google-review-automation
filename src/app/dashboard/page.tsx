@@ -27,34 +27,10 @@ export default async function DashboardPage() {
     );
   }
 
-  const [feedbackRes, reviewFlowsRes, scanLogsRes] = await Promise.all([
-    admin.from("feedback").select("*").eq("business_id", business.id),
-    admin.from("reviews_flow").select("*").eq("business_id", business.id),
-    admin.from("scan_logs").select("*").eq("business_id", business.id),
-  ]);
-
-  const feedbacks   = feedbackRes.data ?? [];
-  const reviewFlows = reviewFlowsRes.data ?? [];
-  const scanLogs    = scanLogsRes.data ?? [];
-
-  const totalScans      = scanLogs.length;
-  const totalRatings    = reviewFlows.length;
-  const googleRedirects = reviewFlows.filter(r => r.submitted_to_google).length;
-  const avgRating       = totalRatings > 0
-    ? (reviewFlows.reduce((s, r) => s + r.rating, 0) / totalRatings).toFixed(1)
-    : "—";
-  const conversionRate  = totalScans > 0 ? Math.round((googleRedirects / totalScans) * 100) : 0;
-  const recentFeedbacks = feedbacks.slice(-5).reverse();
-
+  // Pass only the business info — DashboardClient fetches live stats itself
   return (
     <DashboardClient
       business={business}
-      totalScans={totalScans}
-      totalRatings={totalRatings}
-      googleRedirects={googleRedirects}
-      conversionRate={conversionRate}
-      avgRating={avgRating}
-      recentFeedbacks={recentFeedbacks}
       appUrl={process.env.NEXT_PUBLIC_APP_URL ?? ""}
     />
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import QRCodeCard from "@/components/QRCodeCard";
 
 const T = {
@@ -25,14 +25,32 @@ const planMeta: Record<string, { color: string; bg: string; border: string }> = 
   enterprise: { color: "#FF9500", bg: "rgba(255,149,0,0.1)",    border: "rgba(255,149,0,0.25)" },
 };
 
-type Props = {
-  business: { id: string; name: string; custom_url_slug: string; is_active?: boolean | null; plan?: string | null };
+type Business = {
+  id: string;
+  name: string;
+  custom_url_slug: string;
+  is_active?: boolean | null;
+  plan?: string | null;
+};
+
+type Feedback = {
+  id: string;
+  rating: number;
+  feedback_text: string;
+  created_at: string;
+};
+
+type Stats = {
   totalScans: number;
   totalRatings: number;
   googleRedirects: number;
   conversionRate: number;
-  avgRating: string;
-  recentFeedbacks: { id: string; rating: number; feedback_text: string; created_at: string }[];
+  avgRating: number | string;
+  recentFeedbacks: Feedback[];
+};
+
+type Props = {
+  business: Business;
   appUrl: string;
 };
 
@@ -60,29 +78,73 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+// ── Stat skeleton loader ─────────────────────────────────────────────────────
+function StatSkeleton() {
+  return (
+    <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 18, padding: "22px 20px", boxShadow: T.shadow }}>
+      <div style={{ width: 38, height: 38, borderRadius: 11, background: "#F0F0F0", marginBottom: 14 }} />
+      <div style={{ width: 60, height: 28, borderRadius: 6, background: "#F0F0F0", marginBottom: 8 }} />
+      <div style={{ width: 80, height: 12, borderRadius: 4, background: "#F0F0F0" }} />
+    </div>
+  );
+}
+
 // ── Main dashboard component ─────────────────────────────────────────────────
-export default function DashboardClient({
-  business,
-  totalScans,
-  totalRatings,
-  googleRedirects,
-  conversionRate,
-  avgRating,
-  recentFeedbacks,
-  appUrl,
-}: Props) {
+export default function DashboardClient({ business, appUrl }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const plan   = business.plan ?? "basic";
   const planC  = planMeta[plan] ?? planMeta.basic;
   const initial = business.name.charAt(0).toUpperCase();
 
-  const stats = [
-    { label: "QR Scans",         value: totalScans,          icon: "📱", delay: "0s" },
-    { label: "Ratings",          value: totalRatings,         icon: "⭐", delay: "0.06s" },
-    { label: "Google Redirects", value: googleRedirects,      icon: "🔗", delay: "0.12s" },
-    { label: "Conversion",       value: `${conversionRate}%`, icon: "📈", delay: "0.18s" },
-    { label: "Avg Rating",       value: avgRating,            icon: "✦",  delay: "0.24s" },
+  // ── Fetch live stats from API ──────────────────────────────────────────────
+  const fetchStats = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const res = await fetch("/api/dashboard/stats", { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to fetch stats");
+      const json = await res.json();
+
+      const reviewFlows: { rating: number; submitted_to_google: boolean }[] = json.stats
+        ? [] // already aggregated
+        : [];
+
+      // The API returns aggregated stats
+      const s = json.stats;
+      setStats({
+        totalScans:      s.totalScans      ?? 0,
+        totalRatings:    s.totalRatings    ?? 0,
+        googleRedirects: s.googleRedirects ?? 0,
+        conversionRate:  s.conversionRate  ?? 0,
+        avgRating:       s.avgRating > 0 ? s.avgRating.toFixed(1) : "—",
+        recentFeedbacks: s.recentFeedback  ?? [],
+      });
+      setLastUpdated(new Date());
+    } catch (e) {
+      console.error("Stats fetch error:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Initial fetch
+  useEffect(() => { fetchStats(); }, [fetchStats]);
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => fetchStats(true), 30_000);
+    return () => clearInterval(interval);
+  }, [fetchStats]);
+
+  const statCards = [
+    { label: "QR Scans",         value: stats?.totalScans ?? 0,                    icon: "📱", delay: "0s" },
+    { label: "Ratings",          value: stats?.totalRatings ?? 0,                  icon: "⭐", delay: "0.06s" },
+    { label: "Google Redirects", value: stats?.googleRedirects ?? 0,               icon: "🔗", delay: "0.12s" },
+    { label: "Conversion",       value: `${stats?.conversionRate ?? 0}%`,          icon: "📈", delay: "0.18s" },
+    { label: "Avg Rating",       value: stats?.avgRating ?? "—",                   icon: "✦",  delay: "0.24s" },
   ];
 
   return (
@@ -91,10 +153,12 @@ export default function DashboardClient({
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@300;400;500;600&display=swap');
         @keyframes fadeUp { from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);} }
         @keyframes pulse  { 0%,100%{opacity:1;}50%{opacity:0.4;} }
+        @keyframes shimmer { 0%{background-position:-200px 0;}100%{background-position:200px 0;} }
         .stat-card { animation: fadeUp 0.45s ease both; transition: all 0.2s; }
         .stat-card:hover { transform:translateY(-3px); box-shadow:0 8px 32px rgba(246,110,18,0.10)!important; border-color:rgba(246,110,18,0.25)!important; }
         .nav-item:hover { background: rgba(246,110,18,0.06)!important; }
         .fb-card:hover { border-color: rgba(246,110,18,0.2)!important; }
+        .skeleton { background: linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%); background-size: 400px 100%; animation: shimmer 1.4s infinite; }
         ::-webkit-scrollbar{width:4px;}
         ::-webkit-scrollbar-thumb{background:rgba(246,110,18,0.2);border-radius:99px;}
       `}</style>
@@ -103,19 +167,14 @@ export default function DashboardClient({
 
         {/* Overlay (mobile) */}
         {sidebarOpen && (
-          <div
-            onClick={() => setSidebarOpen(false)}
+          <div onClick={() => setSidebarOpen(false)}
             style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(2px)" }}
           />
         )}
 
         {/* Hamburger (mobile only) */}
-        <button
-          className="db-hamburger"
-          onClick={() => setSidebarOpen(o => !o)}
-          aria-label="Toggle menu"
-          style={{ background: "none", border: "none", padding: 0 }}
-        >
+        <button className="db-hamburger" onClick={() => setSidebarOpen(o => !o)} aria-label="Toggle menu"
+          style={{ background: "none", border: "none", padding: 0 }}>
           {sidebarOpen ? (
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.textPri} strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -128,10 +187,8 @@ export default function DashboardClient({
         </button>
 
         {/* Sidebar */}
-        <aside
-          className={`db-sidebar${sidebarOpen ? " open" : ""}`}
-          style={{ background: T.sidebarBg, borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", padding: "28px 16px", boxShadow: "1px 0 0 rgba(0,0,0,0.03)" }}
-        >
+        <aside className={`db-sidebar${sidebarOpen ? " open" : ""}`}
+          style={{ background: T.sidebarBg, borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", padding: "28px 16px", boxShadow: "1px 0 0 rgba(0,0,0,0.03)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 40, paddingLeft: 8 }}>
             <div style={{ width: 36, height: 36, borderRadius: 11, background: `linear-gradient(135deg,${T.gradStart},${T.gradEnd})`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: T.orangeGlow, flexShrink: 0 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
@@ -182,6 +239,13 @@ export default function DashboardClient({
               <h1 style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 30, fontWeight: 800, color: T.textPri, letterSpacing: "-0.04em", lineHeight: 1.1 }}>{business.name}</h1>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              {/* Live indicator */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 99, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", animation: "pulse 2s infinite" }} />
+                <span style={{ fontSize: 11, fontWeight: 600, color: "#16a34a" }}>
+                  {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" })}` : "Loading…"}
+                </span>
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 99, background: business.is_active ? "rgba(22,163,74,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${business.is_active ? "rgba(22,163,74,0.25)" : "rgba(239,68,68,0.2)"}` }}>
                 <div style={{ width: 6, height: 6, borderRadius: "50%", background: business.is_active ? "#22c55e" : "#ef4444", animation: business.is_active ? "pulse 2s infinite" : "none" }} />
                 <span style={{ fontSize: 12, fontWeight: 600, color: business.is_active ? "#16a34a" : "#dc2626" }}>{business.is_active ? "Active" : "Inactive"}</span>
@@ -189,18 +253,36 @@ export default function DashboardClient({
               <div style={{ padding: "8px 14px", borderRadius: 99, background: planC.bg, border: `1px solid ${planC.border}` }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: planC.color, textTransform: "capitalize" }}>{plan} Plan</span>
               </div>
+              {/* Manual refresh button */}
+              <button
+                onClick={() => fetchStats(false)}
+                disabled={loading}
+                title="Refresh stats"
+                style={{ width: 34, height: 34, borderRadius: 10, background: T.cardBg, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.5 : 1, transition: "all 0.2s" }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={T.textSec} strokeWidth="2.5" strokeLinecap="round"
+                  style={{ animation: loading ? "spin 0.8s linear infinite" : "none" }}>
+                  <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+                  <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                </svg>
+              </button>
             </div>
           </div>
 
           {/* Stats grid */}
           <div className="db-stats-grid">
-            {stats.map(s => (
-              <div key={s.label} className="stat-card" style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 18, padding: "22px 20px", boxShadow: T.shadow, animationDelay: s.delay }}>
-                <div style={{ width: 38, height: 38, borderRadius: 11, background: "rgba(246,110,18,0.08)", border: "1px solid rgba(246,110,18,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, marginBottom: 14 }}>{s.icon}</div>
-                <p style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 800, color: T.textPri, letterSpacing: "-0.04em", marginBottom: 4 }}>{s.value}</p>
-                <p style={{ fontSize: 12, color: T.textSec, fontWeight: 500 }}>{s.label}</p>
-              </div>
-            ))}
+            {loading && !stats ? (
+              // Skeleton while first load
+              Array.from({ length: 5 }).map((_, i) => <StatSkeleton key={i} />)
+            ) : (
+              statCards.map(s => (
+                <div key={s.label} className="stat-card" style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 18, padding: "22px 20px", boxShadow: T.shadow, animationDelay: s.delay }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 11, background: "rgba(246,110,18,0.08)", border: "1px solid rgba(246,110,18,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, marginBottom: 14 }}>{s.icon}</div>
+                  <p style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", fontSize: 26, fontWeight: 800, color: T.textPri, letterSpacing: "-0.04em", marginBottom: 4 }}>{s.value}</p>
+                  <p style={{ fontSize: 12, color: T.textSec, fontWeight: 500 }}>{s.label}</p>
+                </div>
+              ))
+            )}
           </div>
 
           {/* Bottom grid */}
@@ -223,18 +305,27 @@ export default function DashboardClient({
 
             {/* Recent feedback */}
             <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 20, padding: 28, boxShadow: T.shadow, animation: "fadeUp 0.4s 0.38s ease both", opacity: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: T.primary }} />
-                <p style={{ fontSize: 11, fontWeight: 700, color: T.textSec, textTransform: "uppercase", letterSpacing: "0.08em" }}>Recent Private Feedback</p>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: T.primary }} />
+                  <p style={{ fontSize: 11, fontWeight: 700, color: T.textSec, textTransform: "uppercase", letterSpacing: "0.08em" }}>Recent Private Feedback</p>
+                </div>
+                {stats && <span style={{ fontSize: 11, color: T.textSec }}>{stats.recentFeedbacks.length} shown</span>}
               </div>
-              {recentFeedbacks.length === 0 ? (
+              {loading && !stats ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="skeleton" style={{ height: 64, borderRadius: 12 }} />
+                  ))}
+                </div>
+              ) : !stats?.recentFeedbacks.length ? (
                 <div style={{ textAlign: "center", padding: "40px 20px" }}>
                   <div style={{ width: 56, height: 56, borderRadius: 16, background: T.inputBg, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, margin: "0 auto 12px" }}>💬</div>
                   <p style={{ fontSize: 13, color: T.textSec }}>No feedback yet</p>
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {recentFeedbacks.map(fb => (
+                  {stats.recentFeedbacks.map(fb => (
                     <div key={fb.id} className="fb-card" style={{ background: T.inputBg, border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 14px", transition: "all 0.15s" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                         <div style={{ display: "flex", gap: 2 }}>
@@ -256,6 +347,7 @@ export default function DashboardClient({
           </div>
         </div>
       </main>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>
   );
 }
