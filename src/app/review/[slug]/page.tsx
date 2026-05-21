@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabase";
 
 interface Business {
   id: string;
@@ -36,45 +35,51 @@ export default function ReviewPage({ params }: PageProps) {
   }, [params]);
 
   async function fetchBusiness(slug: string) {
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from("businesses")
-      .select("*")
-      .eq("custom_url_slug", slug)
-      .single();
-
-    if (error || !data) { setNotFound(true); setLoading(false); return; }
-    if (data.is_active === false) {
-      setInactive(true);
+    try {
+      const res = await fetch(`/api/review/${encodeURIComponent(slug)}/tags`);
+      if (!res.ok) { setNotFound(true); setLoading(false); return; }
+      // Use the tags endpoint to also verify the business exists — but we need business data
+      // so fetch from a dedicated public endpoint
+      const bizRes = await fetch(`/api/review/${encodeURIComponent(slug)}/info`);
+      if (!bizRes.ok) { setNotFound(true); setLoading(false); return; }
+      const bizData = await bizRes.json();
+      if (!bizData.business) { setNotFound(true); setLoading(false); return; }
+      if (bizData.business.is_active === false) { setInactive(true); setLoading(false); return; }
+      setBusiness(bizData.business);
       setLoading(false);
-      return;
-    }
-    setBusiness(data);
-    setLoading(false);
 
-    await supabase.from("scan_logs").insert({
-      business_id: data.id,
-      user_agent: navigator.userAgent,
-      device_type: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop",
-    });
+      // Track scan via server-side API (bypasses RLS)
+      await fetch("/api/track-scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessId: bizData.business.id,
+          userAgent: navigator.userAgent,
+          deviceType: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop",
+        }),
+      });
+    } catch {
+      setNotFound(true);
+      setLoading(false);
+    }
   }
 
   async function handleStarClick(star: number) {
     if (navigating || !business) return;
-    const supabase = getSupabase();
     setSelectedStar(star);
     setNavigating(true);
 
-    const { data: flow } = await supabase
-      .from("reviews_flow")
-      .insert({
-        business_id: business.id,
-        rating: star,
-        submitted_to_google: false,
-      })
-      .select().single();
-
-    const flowId = flow?.id ?? "";
+    // Create review flow via server-side API (bypasses RLS)
+    let flowId = "";
+    try {
+      const res = await fetch("/api/start-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ businessId: business.id, rating: star }),
+      });
+      const data = await res.json();
+      flowId = data.flowId ?? "";
+    } catch { /* continue without flowId */ }
 
     setTimeout(() => {
       if (star >= 4) {
